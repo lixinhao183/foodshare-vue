@@ -59,17 +59,36 @@ const router = createRouter({
           path: "manage",
           name: "manage",
           component: AdminDashboard,
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresAdmin: true }
         },
       ],
     },
   ],
 });
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
+
+  // 如果需要认证且没有 token，跳转到登录页
   if (to.meta.requiresAuth && !userStore.token) {
-    next({ name: 'login' });
+    return next({ name: 'login' });
+  }
+
+  // 如果有 token 但没有用户信息，尝试获取用户信息
+  if (userStore.token && (!userStore.userInfo || !userStore.userInfo.role)) {
+    await userStore.getUserInfo();
+  }
+
+  // 如果需要管理员权限
+  if (to.meta.requiresAdmin) {
+    const role = userStore.userInfo.role;
+    // 角色（0, 1管理员 2登录用户 3游客）
+    if (role === 0 || role === 1) {
+      next();
+    } else {
+      // 非管理员跳转到首页或显示无权限（这里暂定跳转到首页）
+      next({ name: 'food-list' });
+    }
   } else {
     next();
   }

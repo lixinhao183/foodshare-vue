@@ -14,6 +14,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+import { computed } from 'vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -39,13 +40,21 @@ watch(() => route.query.keyword, (newKeyword) => {
   searchText.value = newKeyword || ''
 })
 
-const menuItems = [
-  { id: 'home', label: '主页', icon: HomeFilled, routeName: 'food-list' },
-  { id: 'publish', label: '发布', icon: Plus, routeName: 'publish' },
-  { id: 'notification', label: '通知', icon: Bell, routeName: 'notification' },
-  { id: 'me', label: '我的', icon: User, routeName: 'me' },
-  { id: 'manage', label: '管理', icon: Setting, routeName: 'manage' },
-]
+const menuItems = computed(() => {
+  const items = [
+    { id: 'home', label: '主页', icon: HomeFilled, routeName: 'food-list' },
+    { id: 'publish', label: '发布', icon: Plus, routeName: 'publish' },
+    { id: 'notification', label: '通知', icon: Bell, routeName: 'notification' },
+    { id: 'me', label: '我的', icon: User, routeName: 'me' },
+  ]
+
+  // 角色（0, 1管理员 2登录用户 3游客）
+  if (userStore.userInfo && (userStore.userInfo.role === 0 || userStore.userInfo.role === 1)) {
+    items.push({ id: 'manage', label: '管理', icon: Setting, routeName: 'manage' })
+  }
+
+  return items
+})
 
 const handleMenuClick = (item) => {
   activeMenu.value = item.id
@@ -73,14 +82,14 @@ const updateIsMobile = () => {
 
 // 监听路由变化以更新 activeMenu
 watch(() => route.name, (newRouteName) => {
-  const item = menuItems.find(i => i.routeName === newRouteName)
+  const item = menuItems.value.find(i => i.routeName === newRouteName)
   if (item) {
     activeMenu.value = item.id
   }
 }, { immediate: true })
 
 onMounted(() => {
-  if (userStore.token && !userStore.userInfo.id) {
+  if (userStore.token && (!userStore.userInfo || !userStore.userInfo.id)) {
     userStore.getUserInfo()
   }
   window.addEventListener('resize', updateIsMobile)
