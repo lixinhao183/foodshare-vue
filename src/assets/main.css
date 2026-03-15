@@ -1,0 +1,59 @@
+/* 重置默认样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+@font-face {
+  font-family: "PangMenZhengDao";
+  src: url("./PangMenZhengDaoBiaoTiTiMianFeiBan-2.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* Element Plus 组件样式覆盖 */
+.el-header {
+  --el-header-padding: 0 !important;
+}
+
+.el-main {
+  --el-main-padding: 0 !important;
+}
+
+/* 按钮样式设置 */
+.el-button {
+  color: #000000;
+  /* 确保按钮圆角设置生效 */
+  --el-button-border-radius: var(--el-border-radius-base);
+}
+
+/* 全局CSS变量定义 */
+:root {
+  /* 字体设置 */
+  --el-font-family: "PangMenZhengDao", sans-serif;
+
+  /* 基础圆角设置 */
+  --el-border-radius-base: 8px;
+  --el-border-radius-round: 20px;
+  --el-border-radius-circle: 50%;
+
+  /* 专门针对按钮的圆角变量 */
+  --el-button-border-radius: 8px;
+
+  /* 主色调 */
+  --el-color-primary: #409eff;
+  --el-color-success: #67c23a;
+  --el-color-warning: #e6a23c;
+  --el-color-danger: #f56c6c;
+  --el-color-info: #909399;
+}
+
+/* 针对不同类型的按钮设置 */
+.el-button--default {
+  --el-button-border-radius: var(--el-button-border-radius);
+}
+
+.el-button.is-round {
+  --el-button-border-radius: var(--el-border-radius-round);
+}
