@@ -162,7 +162,7 @@
           </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="tagCreating" @click="handleCreateTags">新增</el-button>
-            <el-button :loading="tagLoading" @click="fetchTags">刷新</el-button>
+            <el-button :loading="tagLoading" @click="fetchTags(tagPage)">刷新</el-button>
           </el-form-item>
         </el-form>
 
