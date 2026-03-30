@@ -1,52 +1,86 @@
 <template>
   <div class="content-area" v-loading="loading">
     <!-- Filters -->
-    <div class="filter-bar">
-      <div class="filter-tabs">
-          <div
-            v-for="filter in filters"
-            :key="filter"
-            class="filter-chip"
-            :class="{ active: activeFilter === filter }"
-            @click="activeFilter = filter"
-          >
-            {{ filter }}
+    <div class="filter-container">
+      <div class="filter-bar">
+        <div class="filter-main">
+          <div class="filter-row">
+            <div class="row-label">排序方式</div>
+            <div class="row-options">
+              <div
+                class="option-item"
+                :class="{ active: sortType === 'new' }"
+                @click="sortType = 'new'; applyFilters()"
+              >
+                最新发布
+              </div>
+              <div
+                class="option-item"
+                :class="{ active: sortType === 'hot' }"
+                @click="sortType = 'hot'; applyFilters()"
+              >
+                热门推荐
+              </div>
+            </div>
           </div>
         </div>
 
-        <el-popover
-          placement="bottom-end"
-          :width="300"
-          trigger="click"
-          popper-class="filter-popover"
-        >
-          <template #reference>
-            <div class="filter-advanced">
-              <span>更多筛选</span>
-              <el-icon><Filter /></el-icon>
-            </div>
-          </template>
+        <div class="filter-more-btn" @click="showAdvancedFilters = !showAdvancedFilters">
+          <span>更多筛选</span>
+          <el-icon :class="{ 'is-active': showAdvancedFilters }">
+            <ArrowDown v-if="!showAdvancedFilters" />
+            <ArrowUp v-else />
+          </el-icon>
+        </div>
+      </div>
 
-          <div class="advanced-filters-content" @click.stop>
-            <div class="filter-section">
-              <div class="section-title">排序方式</div>
-              <el-radio-group v-model="sortType" size="small">
-                <el-radio-button label="new">最新发布</el-radio-button>
-                <el-radio-button label="hot">热门推荐</el-radio-button>
-              </el-radio-group>
-            </div>
-
-            <div class="filter-section">
-              <div class="section-title">价格区间 (元)</div>
-              <div class="price-inputs">
-                <el-input-number v-model="priceMin" :min="0" placeholder="最低" size="small" :controls="false" style="width: 110px" />
-                <span class="separator">-</span>
-                <el-input-number v-model="priceMax" :min="0" placeholder="最高" size="small" :controls="false" style="width: 110px" />
+      <el-collapse-transition>
+        <div v-show="showAdvancedFilters" class="advanced-filter-panel">
+          <div class="filter-row">
+            <div class="row-label">位置分类</div>
+            <div class="row-options scrollable">
+              <div
+                v-for="filter in filters"
+                :key="filter"
+                class="option-item"
+                :class="{ active: activeFilter === filter }"
+                @click="activeFilter = filter"
+              >
+                {{ filter }}
               </div>
             </div>
+          </div>
 
-            <div class="filter-section">
-              <div class="section-title">标签筛选</div>
+          <div class="filter-row">
+            <div class="row-label">价格区间</div>
+            <div class="row-options">
+              <div class="price-range">
+                <el-input-number
+                  v-model="priceMin"
+                  :min="0"
+                  placeholder="最低"
+                  size="small"
+                  :controls="false"
+                  class="price-input"
+                />
+                <span class="separator">-</span>
+                <el-input-number
+                  v-model="priceMax"
+                  :min="0"
+                  placeholder="最高"
+                  size="small"
+                  :controls="false"
+                  class="price-input"
+                />
+                <span class="unit">元</span>
+                <el-button type="primary" size="small" @click="applyFilters" class="price-btn">确认</el-button>
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <div class="row-label">标签筛选</div>
+            <div class="row-options">
               <el-select
                 v-model="selectedTags"
                 multiple
@@ -55,8 +89,8 @@
                 default-first-option
                 placeholder="选择或输入标签"
                 size="small"
-                style="width: 100%"
-                :teleported="false"
+                style="width: 300px"
+                @change="applyFilters"
               >
                 <el-option
                   v-for="item in predefinedTags"
@@ -65,15 +99,20 @@
                   :value="item"
                 />
               </el-select>
-            </div>
-
-            <div class="filter-actions">
-               <el-button size="small" @click="resetFilters">重置</el-button>
-               <el-button type="primary" size="small" @click="applyFilters">应用筛选</el-button>
+              <el-button
+                link
+                size="small"
+                class="reset-btn"
+                @click="resetFilters"
+                :icon="RefreshRight"
+              >
+                重置全部筛选
+              </el-button>
             </div>
           </div>
-        </el-popover>
-      </div>
+        </div>
+      </el-collapse-transition>
+    </div>
 
       <!-- Card Grid -->
       <div class="card-grid" v-if="foodList.length > 0">
@@ -117,23 +156,28 @@ import { useRouter, useRoute } from 'vue-router'
 import {
   Monitor,
   Star,
-  Filter
+  ArrowDown,
+  ArrowUp,
+  RefreshRight,
 } from '@element-plus/icons-vue'
 import { getPostList, getTags } from '@/api/post'
 import { likePost, unlikePost } from '@/api/user'
+import { getLocalList } from '@/api/local'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
-const filters = ['全部', '校内', '校外', '外卖']
+const filters = ref(['全部'])
+const localOptions = ref([])
 const activeFilter = ref('全部')
 const loading = ref(false)
 const foodList = ref([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const showAdvancedFilters = ref(false)
 
 // Advanced filters
 const sortType = ref('new')
@@ -141,6 +185,16 @@ const priceMin = ref(undefined)
 const priceMax = ref(undefined)
 const selectedTags = ref([])
 const predefinedTags = ref([])
+
+const fetchLocals = async () => {
+  try {
+    const res = await getLocalList()
+    localOptions.value = res || []
+    filters.value = ['全部', ...localOptions.value.map(item => item.localName)]
+  } catch (error) {
+    console.error('Failed to fetch locations:', error)
+  }
+}
 
 const fetchTags = async () => {
   try {
@@ -170,12 +224,11 @@ const fetchPosts = async () => {
       sort: sortType.value
     }
 
-    if (activeFilter.value === '校内') {
-      params.local = 0
-    } else if (activeFilter.value === '校外') {
-      params.local = 1
-    } else if (activeFilter.value === '外卖') {
-      params.local = 2
+    if (activeFilter.value !== '全部') {
+      const selectedLocal = localOptions.value.find(item => item.localName === activeFilter.value)
+      if (selectedLocal) {
+        params.local = selectedLocal.localId
+      }
     }
 
     // Price range
@@ -241,6 +294,7 @@ const applyFilters = () => {
 
 const resetFilters = () => {
     sortType.value = 'new'
+    activeFilter.value = '全部'
     priceMin.value = undefined
     priceMax.value = undefined
     selectedTags.value = []
@@ -265,6 +319,7 @@ const handleCardClick = (id) => {
 onMounted(() => {
   fetchPosts()
   fetchTags()
+  fetchLocals()
 })
 </script>
 
@@ -274,97 +329,140 @@ onMounted(() => {
   min-height: 500px;
 }
 
+.filter-container {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+}
+
 .filter-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  position: sticky;
-  top: 0;
-  background: #fafafa;
-  z-index: 5;
-  padding: 10px 0;
 }
 
-.filter-tabs {
+.filter-main {
+  flex: 1;
+}
+
+.filter-row {
   display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 5px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
-.filter-chip {
-    padding: 8px 20px;
-    border-radius: 20px;
-    background-color: #fff;
-    color: #666;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid #eee;
-    white-space: nowrap;
+.filter-row:last-child {
+  margin-bottom: 0;
 }
 
-.filter-chip:hover {
-    background-color: #f0f0f0;
-    color: #333;
+.row-label {
+  width: 80px;
+  font-size: 14px;
+  color: #909399;
+  padding-top: 6px;
+  flex-shrink: 0;
 }
 
-.filter-chip.active {
-    background-color: #333;
-    color: #fff;
-    border-color: #333;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+.row-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
 }
 
-.filter-advanced {
+.row-options.scrollable {
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.option-item {
+  padding: 6px 16px;
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.option-item:hover {
+  color: #409eff;
+  background-color: #ecf5ff;
+}
+
+.option-item.active {
+  color: #409eff;
+  background-color: #ecf5ff;
+  font-weight: 600;
+}
+
+.filter-more-btn {
   display: flex;
   align-items: center;
-  cursor: pointer;
-  color: #666;
-  font-size: 14px;
   gap: 4px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: background-color 0.2s;
-}
-.filter-advanced:hover {
-    background-color: #f0f0f0;
-    color: #333;
-}
-
-/* Advanced Filter Content Styles */
-.advanced-filters-content {
-    padding: 10px;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  transition: all 0.2s;
+  height: 32px;
+  background: #fff;
 }
 
-.filter-section {
-    margin-bottom: 20px;
+.filter-more-btn:hover {
+  color: #409eff;
+  border-color: #409eff;
 }
 
-.section-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 10px;
+.filter-more-btn .el-icon {
+  transition: transform 0.3s;
 }
 
-.price-inputs {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.advanced-filter-panel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f2f5;
 }
+
+.price-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.price-input {
+  width: 100px;
+}
+
+.price-input :deep(.el-input__wrapper) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
 .separator {
-    color: #999;
+  color: #dcdfe6;
 }
 
-.filter-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #eee;
+.unit {
+  font-size: 14px;
+  color: #606266;
+  margin-right: 8px;
+}
+
+.price-btn {
+  margin-left: 8px;
+}
+
+.reset-btn {
+  margin-left: 16px;
+  color: #909399;
+}
+
+.reset-btn:hover {
+  color: #f56c6c;
 }
 
 /* Grid Styles */
@@ -393,9 +491,10 @@ onMounted(() => {
 
 .card-image-wrapper {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 5;
   position: relative;
   background-color: #f8f8f8;
+  overflow: hidden;
 }
 
 .card-image-wrapper img {

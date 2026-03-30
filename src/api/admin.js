@@ -26,10 +26,10 @@ export function getAdminPostList(params) {
   });
 }
 
-// 4.4 审核帖子
-export function auditPost(postId, status) {
+// 4.4 修改帖子状态
+export function updatePostStatus(postId, status) {
   return request({
-    url: `/admin/post/audit/${postId}/${status}`,
+    url: `/admin/post/status/${postId}/${status}`,
     method: "put",
   });
 }
@@ -68,15 +68,24 @@ export function getReportList(params) {
   });
 }
 
-// 4.8 处理举报记录（后端内部切换 isStatus：0<->1）
-export function updateReportStatus(id) {
+// 4.8 处理举报记录
+export function updateReportStatus(id, isStatus) {
   return request({
     url: `/admin/report/${id}`,
     method: "put",
+    params: { isStatus },
   });
 }
 
-// 4.8 批量新增标签
+// 4.9 删除举报记录
+export function deleteReport(id) {
+  return request({
+    url: `/admin/report/${id}`,
+    method: "delete",
+  });
+}
+
+// 4.10 批量新增标签
 export function createAdminTags(data) {
   return request({
     url: "/admin/tag",
@@ -108,5 +117,22 @@ export function updateUserRole(data) {
     url: "/admin/user/role",
     method: "put",
     data,
+  });
+}
+
+// 4.12 评论列表
+export function getAdminCommentList(params) {
+  return request({
+    url: "/admin/comment/list",
+    method: "get",
+    params,
+  });
+}
+
+// 4.13 删除评论
+export function deleteAdminComment(commentId) {
+  return request({
+    url: `/admin/comment/${commentId}`,
+    method: "delete",
   });
 }

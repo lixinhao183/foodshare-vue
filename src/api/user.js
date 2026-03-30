@@ -9,6 +9,14 @@ export function login(data) {
   });
 }
 
+// 1.1.1 游客登录
+export function guestLogin() {
+  return request({
+    url: "/user/guestLogin",
+    method: "post",
+  });
+}
+
 // 1.2 用户退出登录
 export function logout() {
   return request({
@@ -68,6 +76,22 @@ export function getViewHistory(params) {
     url: "/user/viewhistory",
     method: "get",
     params,
+  });
+}
+
+// 1.25 删除单条浏览记录
+export function deleteViewHistory(postId) {
+  return request({
+    url: `/user/viewhistory/${postId}`,
+    method: "delete",
+  });
+}
+
+// 1.26 清空浏览记录
+export function clearViewHistory() {
+  return request({
+    url: "/user/viewhistory",
+    method: "delete",
   });
 }
 

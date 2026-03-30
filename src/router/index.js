@@ -36,7 +36,7 @@ const router = createRouter({
           path: "publish",
           name: "publish",
           component: PublishPostView,
-          meta: { requiresAuth: true }
+          meta: { permissions: ["post:create"] },
         },
         {
           path: "post/:id",
@@ -47,19 +47,19 @@ const router = createRouter({
           path: "notification",
           name: "notification",
           component: NotificationView,
-          meta: { requiresAuth: true }
+          meta: { permissions: ["user:view"] },
         },
         {
           path: "me",
           name: "me",
           component: ProfileView,
-          meta: { requiresAuth: true }
+          meta: { permissions: ["user:view"] },
         },
         {
           path: "manage",
           name: "manage",
           component: AdminDashboard,
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { permissions: ["admin:manage", "permission:manage"] },
         },
       ],
     },
@@ -69,25 +69,44 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
 
-  // 如果需要认证且没有 token，跳转到登录页
-  if (to.meta.requiresAuth && !userStore.token) {
-    return next({ name: 'login' });
+  // 如果没有 token 但访问需要权限的页面
+  if (to.meta.permissions && !userStore.token) {
+    return next({ name: "login" });
   }
 
   // 如果有 token 但没有用户信息，尝试获取用户信息
-  if (userStore.token && (!userStore.userInfo || !userStore.userInfo.role)) {
-    await userStore.getUserInfo();
+  if (userStore.token && (!userStore.userInfo || userStore.userInfo.role === undefined)) {
+    try {
+      await userStore.getUserInfo();
+    } catch (error) {
+      // 获取失败可能是 token 过期或无权限
+      // 如果目标页面需要权限，则必须跳转到登录页
+      if (to.meta.permissions) {
+        return next({ name: "login" });
+      }
+      // 如果目标页面是公开的，则允许继续访问（userStore.getUserInfo 内部已处理 clearToken）
+    }
   }
 
-  // 如果需要管理员权限
-  if (to.meta.requiresAdmin) {
-    const role = userStore.userInfo.role;
-    // 角色（0, 1管理员 2登录用户 3游客）
-    if (role === 0 || role === 1) {
+  // 检查权限
+  if (to.meta.permissions) {
+    // 超级管理员(role=1)拥有所有权限
+    if (userStore.userInfo?.role === 1) {
+      return next();
+    }
+
+    const hasPerm = userStore.hasPermission(to.meta.permissions);
+    if (hasPerm) {
       next();
     } else {
-      // 非管理员跳转到首页或显示无权限（这里暂定跳转到首页）
-      next({ name: 'food-list' });
+      // 无权限
+      if (userStore.token) {
+        // 已登录但无权限，跳转首页
+        next({ name: "food-list" });
+      } else {
+        // 未登录跳转登录
+        next({ name: "login" });
+      }
     }
   } else {
     next();

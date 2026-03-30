@@ -7,7 +7,6 @@ import {
   Bell,
   User,
   Setting,
-  MoreFilled,
   Search,
   SwitchButton,
   Menu as MenuIcon
@@ -41,15 +40,25 @@ watch(() => route.query.keyword, (newKeyword) => {
 })
 
 const menuItems = computed(() => {
+  // 确保依赖于 userStore.userInfo 的变化
+  const role = userStore.userInfo?.role
+
   const items = [
     { id: 'home', label: '主页', icon: HomeFilled, routeName: 'food-list' },
-    { id: 'publish', label: '发布', icon: Plus, routeName: 'publish' },
-    { id: 'notification', label: '通知', icon: Bell, routeName: 'notification' },
-    { id: 'me', label: '我的', icon: User, routeName: 'me' },
   ]
 
-  // 角色（0, 1管理员 2登录用户 3游客）
-  if (userStore.userInfo && (userStore.userInfo.role === 0 || userStore.userInfo.role === 1)) {
+  // 如果是超级管理员(1)、管理员(2)或普通用户(3)
+  if (role === 1 || role === 2 || role === 3) {
+    items.push({ id: 'publish', label: '发布', icon: Plus, routeName: 'publish' })
+  }
+
+  if (role === 1 || role === 2 || role === 3) {
+    items.push({ id: 'notification', label: '通知', icon: Bell, routeName: 'notification' })
+    items.push({ id: 'me', label: '我的', icon: User, routeName: 'me' })
+  }
+
+  // 超级管理员(1)或管理员(2)可见管理端
+  if (role === 1 || role === 2) {
     items.push({ id: 'manage', label: '管理', icon: Setting, routeName: 'manage' })
   }
 
@@ -89,7 +98,7 @@ watch(() => route.name, (newRouteName) => {
 }, { immediate: true })
 
 onMounted(() => {
-  if (userStore.token && (!userStore.userInfo || !userStore.userInfo.id)) {
+  if (userStore.token && (!userStore.userInfo || !userStore.userInfo.userId)) {
     userStore.getUserInfo()
   }
   window.addEventListener('resize', updateIsMobile)
@@ -125,12 +134,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="bottom-area">
-           <div class="menu-item">
-            <el-icon class="menu-icon"><MoreFilled /></el-icon>
-            <span class="menu-label">更多</span>
-          </div>
-        </div>
       </el-aside>
 
       <!-- Mobile Drawer Menu -->
@@ -185,9 +188,6 @@ onUnmounted(() => {
             </el-input>
           </div>
           <div class="header-actions">
-            <el-button circle size="large" class="icon-btn">
-              <el-icon><Bell /></el-icon>
-            </el-button>
             <el-dropdown v-if="userStore.token" trigger="click">
               <span class="el-dropdown-link">
                 <el-avatar class="user-avatar" :size="40" :src="userStore.userInfo.image || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'">头像</el-avatar>

@@ -14,7 +14,7 @@
                 />
                 <div class="user-info" @click="router.push({ name: 'me', query: { userId: post.userId } })" style="cursor: pointer;">
                     <span class="username">{{ post.username }}</span>
-                    <span class="publish-time">{{ post.createTime }}</span>
+                    <span class="publish-time">{{ formatDate(post.createTime) }}</span>
                 </div>
                 <div class="post-actions">
                      <el-button
@@ -38,6 +38,7 @@
                          <el-dropdown-menu>
                            <el-dropdown-item command="report_post">举报帖子</el-dropdown-item>
                            <el-dropdown-item command="report_user">举报用户</el-dropdown-item>
+                           <el-dropdown-item v-hasPerm="['admin:manage']" command="delete_post" style="color: #f56c6c">删除帖子 (管理员)</el-dropdown-item>
                          </el-dropdown-menu>
                        </template>
                      </el-dropdown>
@@ -59,7 +60,8 @@
                         :src="img"
                         :preview-src-list="post.images"
                         :initial-index="index"
-                        fit="contain"
+                        preview-teleported
+                        fit="cover"
                         class="carousel-image"
                     />
                 </el-carousel-item>
@@ -72,9 +74,9 @@
                 <span class="currency">¥</span>
                 <span class="amount">{{ post.price }}</span>
             </div>
-            <div class="location-box" v-if="post.local !== undefined">
+            <div class="location-box" v-if="post.localName">
                  <el-icon><Location /></el-icon>
-                 <span>{{ post.local === 0 ? '校内' : (post.local === 1 ? '校外' : '外卖') }}</span>
+                 <span>{{ post.localName }}</span>
             </div>
         </div>
 
@@ -129,7 +131,7 @@
                     <div class="comment-body">
                         <div class="comment-header">
                             <span class="comment-user">{{ comment.username }}</span>
-                            <span class="comment-time">{{ comment.createTime }}</span>
+                            <span class="comment-time">{{ formatDate(comment.createTime, 'relative') }}</span>
                         </div>
                         <div class="comment-text">{{ comment.content }}</div>
                         <div class="comment-actions">
@@ -168,11 +170,10 @@
                             <div class="reply-body">
                               <div class="comment-header">
                                 <span class="comment-user">{{ child.username }}</span>
-                                <span class="comment-time">{{ child.createTime }}</span>
+                                <span class="comment-time">{{ formatDate(child.createTime, 'relative') }}</span>
                               </div>
                               <div class="comment-text">{{ child.content }}</div>
                               <div class="comment-actions">
-                                <el-button type="text" size="small" class="action-text" @click="startReply(child)">回复</el-button>
                                 <el-button type="text" size="small" class="action-text" @click="openReportComment(child)">举报</el-button>
                                 <el-button
                                   type="text"
@@ -185,20 +186,6 @@
                                   赞 {{ child.likeCount || 0 }}
                                 </el-button>
                                 <el-button v-if="isMyComment(child)" type="text" size="small" class="action-text delete" @click="handleDeleteComment(child.commentId)">删除</el-button>
-                              </div>
-
-                              <div v-if="isReplyingTo(child)" class="reply-editor">
-                                <el-input
-                                  v-model="replyContent"
-                                  :placeholder="replyPlaceholder"
-                                  type="textarea"
-                                  :autosize="{ minRows: 1, maxRows: 3 }"
-                                  resize="none"
-                                />
-                                <div class="reply-editor-actions">
-                                  <el-button size="small" @click="cancelReply">取消</el-button>
-                                  <el-button type="primary" size="small" :loading="replyPublishing" :disabled="replyPublishing || !replyContent.trim()" @click="handlePublishReply">发送</el-button>
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -228,9 +215,6 @@
         <el-form-item label="原因" required>
           <el-input v-model="reportForm.reasonText" type="textarea" :rows="4" placeholder="请填写举报原因" />
         </el-form-item>
-        <el-form-item label="证据（可选）">
-          <el-input v-model="reportForm.evidence" type="textarea" :rows="4" placeholder="可填写截图链接、补充说明等" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -259,10 +243,12 @@ import {
   favouritePost,
   unfavouritePost,
 } from '@/api/user'
+import { deleteAdminPost } from '@/api/admin'
 import { getCommentList } from '@/api/post'
 import { useUserStore } from '@/stores/user'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Location, View, Star, Collection, MoreFilled } from '@element-plus/icons-vue'
+import { formatDate } from '@/utils/formatDate'
 
 const route = useRoute()
 const router = useRouter()
@@ -291,7 +277,6 @@ const reportForm = ref({
   targetId: undefined,
   targetType: undefined,
   reasonText: '',
-  evidence: '',
 })
 
 const reportTargetLabel = computed(() => {
@@ -413,18 +398,37 @@ const openReport = (targetType, targetId) => {
     targetId,
     targetType,
     reasonText: '',
-    evidence: '',
   }
   reportDialogVisible.value = true
 }
 
-const handlePostMenuCommand = (command) => {
+const handlePostMenuCommand = async (command) => {
   if (!post.value) return
   if (command === 'report_post') {
     openReport(0, post.value.postId)
   }
   if (command === 'report_user') {
     openReport(1, post.value.userId)
+  }
+  if (command === 'delete_post') {
+    try {
+      await ElMessageBox.confirm(
+        '确定要删除这篇帖子吗？此操作不可逆。',
+        '管理操作确认',
+        {
+          confirmButtonText: '确定删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      )
+      await deleteAdminPost(post.value.postId)
+      ElMessage.success('帖子已成功删除')
+      router.push('/')
+    } catch (error) {
+      if (error !== 'cancel') {
+        console.error('Delete post failed:', error)
+      }
+    }
   }
 }
 
@@ -449,7 +453,6 @@ const submitReport = async () => {
       targetId: payload.targetId,
       targetType: payload.targetType,
       reasonText: reason,
-      evidence: String(payload.evidence || '').trim(),
     })
     ElMessage.success('举报已提交')
     reportDialogVisible.value = false
@@ -551,8 +554,9 @@ const toggleCommentLike = async (comment) => {
     comment.likeCount = (comment.likeCount || 0) - delta
     console.error(error)
   } finally {
-    const { [commentId]: _, ...rest } = commentLikeLoading.value
-    commentLikeLoading.value = rest
+    const next = { ...commentLikeLoading.value }
+    delete next[commentId]
+    commentLikeLoading.value = next
   }
 }
 
@@ -631,13 +635,13 @@ const handleDeleteComment = async (commentId) => {
 }
 
 const isMyComment = (comment) => {
-    return Boolean(userStore.userInfo?.userId) && userStore.userInfo.userId === comment.userId
+    if (!userStore.userInfo?.userId) return false
+    return userStore.userInfo.userId === comment.userId
 }
 
 onMounted(() => {
   if (postId) {
-    fetchPostDetail()
-    fetchComments()
+    Promise.all([fetchPostDetail(), fetchComments()])
   }
   window.addEventListener('resize', updateWidth)
 })
@@ -941,6 +945,11 @@ onUnmounted(() => {
 .pagination {
     margin-top: 30px;
     justify-content: center;
+}
+
+.load-more-container {
+    text-align: center;
+    margin-top: 30px;
 }
 
 @media (max-width: 600px) {

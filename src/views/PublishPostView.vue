@@ -5,7 +5,7 @@
         <p class="subtitle">分享你的美食发现</p>
     </div>
 
-    <el-card class="publish-card" :class="{ 'is-active': tagPopoverVisible }">
+    <el-card class="publish-card" :class="{ 'is-active': tagPopoverVisible || locationSelectVisible }">
       <el-form :model="form" :rules="rules" ref="formRef" label-width="0" class="publish-form">
 
         <!-- Title -->
@@ -38,6 +38,7 @@
             action="#"
             list-type="picture-card"
             :http-request="handleUpload"
+            :before-upload="beforeImageUpload"
             :on-preview="handlePictureCardPreview"
             :on-remove="handleRemove"
             :limit="9"
@@ -64,10 +65,19 @@
 
                 <div class="meta-field">
                   <span class="meta-label">位<br/>置</span>
-                  <el-select v-model="form.local" placeholder="选择位置" class="location-select">
-                    <el-option label="校内" :value="0" />
-                    <el-option label="校外" :value="1" />
-                    <el-option label="外卖" :value="2" />
+                  <el-select
+                    v-model="form.local"
+                    placeholder="选择位置"
+                    class="location-select"
+                    :teleported="false"
+                    @visible-change="(val) => locationSelectVisible = val"
+                  >
+                    <el-option
+                      v-for="item in localOptions"
+                      :key="item.localId"
+                      :label="item.localName"
+                      :value="item.localId"
+                    />
                   </el-select>
                 </div>
             </div>
@@ -93,6 +103,7 @@
                         :width="300"
                         trigger="click"
                         v-model:visible="tagPopoverVisible"
+                        :teleported="false"
                     >
                         <template #reference>
                             <el-button class="add-tag-btn" round>
@@ -111,7 +122,7 @@
                                     placeholder="输入关键词搜索或添加"
                                     class="tag-select"
                                     :loading="tagLoading"
-                                    @change="handleTagSelectChange"
+                                    :teleported="false"
                                 >
                                     <el-option
                                         v-for="item in predefinedTags"
@@ -143,7 +154,7 @@
 
         <div class="form-actions">
           <el-button @click="$router.back()" round class="cancel-btn">取消</el-button>
-          <el-button type="primary" @click="handlePublish" :loading="loading" class="submit-btn" round>发布笔记</el-button>
+          <el-button type="primary" @click="handlePublish" :loading="loading" class="submit-btn" round>发布帖子</el-button>
         </div>
       </el-form>
     </el-card>
@@ -151,11 +162,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { publishPost } from '@/api/user'
 import { getTags } from '@/api/post'
 import { uploadFile } from '@/api/common'
+import { getLocalList } from '@/api/local'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 
@@ -170,6 +182,17 @@ const dialogVisible = ref(false)
 const predefinedTags = ref([])
 const tagLoading = ref(false)
 const tagPopoverVisible = ref(false)
+const locationSelectVisible = ref(false)
+const localOptions = ref([])
+
+const fetchLocals = async () => {
+  try {
+    const res = await getLocalList()
+    localOptions.value = res || []
+  } catch (error) {
+    console.error('Failed to fetch locations:', error)
+  }
+}
 
 const fetchTags = async () => {
   try {
@@ -199,19 +222,16 @@ const addHotTag = (tag) => {
   }
 }
 
-const handleTagSelectChange = (val) => {
-  // We can add logic here if needed, but v-model handles it
-}
-
 onMounted(() => {
   fetchTags()
+  fetchLocals()
 })
 
 const form = reactive({
   title: '',
   content: '',
   price: 0,
-  local: 0,
+  local: undefined,
   tags: [],
   images: []
 })
@@ -302,6 +322,20 @@ const handlePictureCardPreview = (uploadFile) => {
   dialogVisible.value = true
 }
 
+const beforeImageUpload = (file) => {
+  const isJPGorPNG = file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/webp'
+  if (!isJPGorPNG) {
+    ElMessage.error('上传图片只能是 JPG/PNG/WebP 格式!')
+    return false
+  }
+  const isLt10M = file.size / 1024 / 1024 < 10
+  if (!isLt10M) {
+    ElMessage.error('上传图片大小不能超过 10MB!')
+    return false
+  }
+  return true
+}
+
 const handlePublish = async () => {
   if (!formRef.value) return
 
@@ -343,7 +377,8 @@ const handlePublish = async () => {
   padding: 20px 16px;
   max-width: 800px;
   margin: 0 auto;
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform, opacity;
 }
 
 @keyframes fadeIn {
@@ -385,6 +420,10 @@ const handlePublish = async () => {
 .publish-card.is-active {
     transform: translateY(-2px);
     box-shadow: 0 25px 70px rgba(0,0,0,0.08);
+}
+
+.publish-card :deep(.el-card__body) {
+    overflow: visible;
 }
 
 .publish-form {
@@ -467,6 +506,8 @@ const handlePublish = async () => {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    position: relative;
+    z-index: 1;
 }
 
 .meta-row {

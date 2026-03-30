@@ -2,36 +2,78 @@
   <div class="admin-container">
     <el-tabs v-model="activeTab" type="border-card">
       <el-tab-pane label="用户管理" name="users">
-        <el-table :data="users" style="width: 100%">
-          <el-table-column prop="userId" label="ID" width="80" />
-          <el-table-column prop="username" label="用户名">
+        <div class="section-header">
+          <div class="section-title">用户列表</div>
+          <div class="section-actions">
+            <el-input
+              v-model="userKeywordFilter"
+              placeholder="搜索用户名"
+              size="small"
+              style="width: 180px"
+              clearable
+              @clear="fetchUsers(1)"
+              @keyup.enter="fetchUsers(1)"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="fetchUsers(1)" />
+              </template>
+            </el-input>
+            <el-button size="small" :loading="userLoading" @click="fetchUsers(1)">刷新</el-button>
+          </div>
+        </div>
+
+        <el-table :data="users" stripe border v-loading="userLoading" style="width: 100%">
+          <el-table-column prop="userId" label="ID" width="80" sortable />
+          <el-table-column label="用户" min-width="150">
             <template #default="scope">
-              <el-link :underline="false" type="primary" @click="goUser(scope.row.userId)">{{ scope.row.username }}</el-link>
+              <div class="target-info">
+                <el-image
+                  v-if="scope.row.image"
+                  :src="scope.row.image"
+                  class="target-image"
+                  :preview-src-list="[scope.row.image]"
+                  preview-teleported
+                  fit="cover"
+                />
+                <el-link :underline="false" type="primary" @click="goUser(scope.row.userId)" class="target-name">{{ scope.row.username }}</el-link>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态">
+          <el-table-column prop="status" label="状态" width="100" sortable>
             <template #default="scope">
-              <el-tag :type="scope.row.status === 0 ? 'success' : 'danger'">
+              <el-tag :type="scope.row.status === 0 ? 'success' : 'danger'" size="small">
                 {{ scope.row.status === 0 ? '启用' : '禁用' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作">
+          <el-table-column prop="role" label="角色" width="120" sortable>
             <template #default="scope">
-              <el-button
-                v-if="scope.row.status === 0"
-                type="danger"
-                size="small"
-                @click="handleStatus(scope.row.userId, 1)"
-              >禁用</el-button>
-              <el-button
-                v-else
-                type="success"
-                size="small"
-                @click="handleStatus(scope.row.userId, 0)"
-              >启用</el-button>
+              <el-tag :type="getRoleTagType(scope.row.role)" size="small">
+                {{ getRoleLabel(scope.row.role) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="scope">
+              <template v-if="canManageUser(scope.row)">
+                <el-button
+                  v-if="scope.row.status === 0"
+                  type="danger"
+                  size="small"
+                  plain
+                  @click="handleStatus(scope.row.userId, 1)"
+                >禁用</el-button>
+                <el-button
+                  v-else
+                  type="success"
+                  size="small"
+                  plain
+                  @click="handleStatus(scope.row.userId, 0)"
+                >启用</el-button>
+              </template>
 
               <el-button
+                v-if="userStore.hasPermission('permission:manage')"
                 type="primary"
                 size="small"
                 plain
@@ -42,42 +84,80 @@
         </el-table>
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="prev, pager, next, total"
           :total="userTotal"
+          :page-size="10"
           @current-change="fetchUsers"
         />
       </el-tab-pane>
 
       <el-tab-pane label="帖子管理" name="posts">
-        <el-table :data="posts" style="width: 100%">
-          <el-table-column prop="postId" label="ID" width="80" />
-          <el-table-column prop="title" label="标题">
+        <div class="section-header">
+          <div class="section-title">帖子列表</div>
+          <div class="section-actions">
+            <el-button size="small" :loading="postLoading" @click="fetchPosts(1)">刷新</el-button>
+          </div>
+        </div>
+
+        <el-table :data="posts" stripe border v-loading="postLoading" style="width: 100%">
+          <el-table-column prop="postId" label="ID" width="80" sortable />
+          <el-table-column label="帖子" min-width="150">
             <template #default="scope">
-              <el-link :underline="false" type="primary" @click="goPost(scope.row.postId)">{{ scope.row.title }}</el-link>
+              <div class="target-info">
+                <el-image
+                  v-if="getPostCover(scope.row)"
+                  :src="getPostCover(scope.row)"
+                  class="target-image"
+                  :preview-src-list="getPostPreviewList(scope.row)"
+                  preview-teleported
+                  fit="cover"
+                />
+                <el-link :underline="false" type="primary" @click="goPost(scope.row.postId)" class="target-name">{{ scope.row.title }}</el-link>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column prop="username" label="作者">
+          <el-table-column prop="username" label="作者" min-width="120">
             <template #default="scope">
-              <el-link :underline="false" @click="goUser(scope.row.userId)">{{ scope.row.username }}</el-link>
+              <el-link :underline="false" type="primary" @click="goUser(scope.row.userId)">{{ scope.row.username }}</el-link>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态">
+          <el-table-column prop="status" label="状态" width="100" sortable>
              <template #default="scope">
+               <el-tag :type="scope.row.status === 2 ? 'success' : (scope.row.status === 1 ? 'danger' : 'warning')" size="small">
                  {{ scope.row.status === 1 ? '未通过' : (scope.row.status === 2 ? '已通过' : '待审核') }}
+               </el-tag>
              </template>
           </el-table-column>
-          <el-table-column label="操作">
+          <el-table-column prop="createTime" label="发布时间" width="160" sortable>
             <template #default="scope">
-              <el-button type="success" size="small" @click="handleAudit(scope.row.postId, 2)">通过</el-button>
-              <el-button type="warning" size="small" @click="handleAudit(scope.row.postId, 1)">拒绝</el-button>
-              <el-button type="danger" size="small" @click="handleDelete(scope.row.postId)">删除</el-button>
+              {{ formatDate(scope.row.createTime) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="scope">
+              <el-button
+                v-if="scope.row.status === 2"
+                type="warning"
+                size="small"
+                plain
+                @click="handlePostStatus(scope.row.postId, 1)"
+              >拒绝</el-button>
+              <el-button
+                v-else
+                type="success"
+                size="small"
+                plain
+                @click="handlePostStatus(scope.row.postId, 2)"
+              >通过</el-button>
+              <el-button type="danger" size="small" plain @click="handleDelete(scope.row.postId)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="prev, pager, next, total"
           :total="postTotal"
+          :page-size="10"
           @current-change="fetchPosts"
         />
       </el-tab-pane>
@@ -86,7 +166,7 @@
         <div class="section-header">
           <div class="section-title">举报记录</div>
           <div class="section-actions">
-            <el-select v-model="reportStatusFilter" size="small" style="width: 160px" placeholder="处理状态">
+            <el-select v-model="reportStatusFilter" size="small" style="width: 120px" placeholder="处理状态" clearable>
               <el-option label="全部" :value="undefined" />
               <el-option label="未处理" :value="0" />
               <el-option label="已处理" :value="1" />
@@ -95,50 +175,129 @@
           </div>
         </div>
 
-        <el-table :data="reports" style="width: 100%" v-loading="reportLoading">
-          <el-table-column label="ID" width="90">
+        <el-table :data="reports" stripe border v-loading="reportLoading" style="width: 100%">
+          <el-table-column label="ID" width="80">
             <template #default="scope">{{ getReportId(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="对象类型" width="110">
+          <el-table-column label="举报人" min-width="120">
             <template #default="scope">
-              <el-tag :type="reportTargetTypeTagType(scope.row)">{{ reportTargetTypeLabel(scope.row) }}</el-tag>
+              <el-link :underline="false" type="primary" @click="goUser(scope.row.reporterId)">{{ scope.row.reporterUsername || '未知' }}</el-link>
             </template>
           </el-table-column>
-          <el-table-column label="对象ID" width="110">
-            <template #default="scope">{{ getReportTargetId(scope.row) }}</template>
+          <el-table-column label="对象类型" width="120" sortable :sort-method="(a, b) => getReportTargetType(a) - getReportTargetType(b)">
+            <template #default="scope">
+              <el-tag :type="reportTargetTypeTagType(scope.row)" size="small">{{ reportTargetTypeLabel(scope.row) }}</el-tag>
+            </template>
           </el-table-column>
-          <el-table-column label="原因" min-width="200">
+          <el-table-column label="举报对象" min-width="150">
+            <template #default="scope">
+              <div class="target-info">
+                <el-image
+                  v-if="getReportTargetImage(scope.row)"
+                  :src="getReportTargetImage(scope.row)"
+                  class="target-image"
+                  :preview-src-list="getReportTargetPreviewList(scope.row)"
+                  preview-teleported
+                  fit="cover"
+                />
+                <span class="target-name">{{ scope.row.targetName || '未知' }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="原因" min-width="150" show-overflow-tooltip>
             <template #default="scope">{{ getReportReason(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="证据" min-width="200">
-            <template #default="scope">{{ previewReportEvidence(scope.row) }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="110">
+          <el-table-column label="状态" width="100" sortable :sort-method="(a, b) => reportStatusValue(a) - reportStatusValue(b)">
             <template #default="scope">
-              <el-tag :type="reportStatusTagType(scope.row)">{{ reportStatusLabel(scope.row) }}</el-tag>
+              <el-tag :type="reportStatusTagType(scope.row)" size="small">{{ reportStatusLabel(scope.row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="时间" width="180">
+          <el-table-column label="时间" width="160" sortable :sort-method="(a, b) => new Date(a.createTime || a.createAt || a.time) - new Date(b.createTime || b.createAt || b.time)">
             <template #default="scope">{{ getReportTime(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="200">
+          <el-table-column label="操作" min-width="200">
             <template #default="scope">
-              <el-button size="small" @click="openReportDetail(scope.row)">详情</el-button>
-              <el-button size="small" type="primary" plain @click="goReportTarget(scope.row)">跳转</el-button>
-              <el-switch
-                v-model="scope.row.isStatus"
-                :active-value="1"
-                :inactive-value="0"
-                :loading="Boolean(reportStatusUpdating[getReportId(scope.row)])"
-                @change="(val) => handleUpdateReportStatus(scope.row, val)"
-              />
+              <div class="action-buttons-container">
+                <div class="action-buttons-row">
+                  <!-- 用户操作 -->
+                  <template v-if="getReportTargetType(scope.row) === 1">
+                    <el-button
+                      v-if="scope.row.targetStatus === 0"
+                      type="danger"
+                      size="small"
+                      plain
+                      @click="handleReportUserStatus(scope.row, 1)"
+                    >禁用用户</el-button>
+                    <el-button
+                      v-else
+                      type="info"
+                      size="small"
+                      plain
+                      disabled
+                    >已禁用</el-button>
+                  </template>
+
+                  <!-- 帖子操作 -->
+                  <template v-else-if="getReportTargetType(scope.row) === 0">
+                    <el-button
+                      v-if="scope.row.targetStatus !== 2"
+                      type="success"
+                      size="small"
+                      plain
+                      @click="handleReportPostStatus(scope.row, 2)"
+                    >通过</el-button>
+                    <el-button
+                      v-else
+                      type="info"
+                      size="small"
+                      plain
+                      disabled
+                    >已通过</el-button>
+
+                    <el-button
+                      v-if="scope.row.targetStatus !== 1"
+                      type="warning"
+                      size="small"
+                      plain
+                      @click="handleReportPostStatus(scope.row, 1)"
+                    >拒绝</el-button>
+                    <el-button
+                      v-else
+                      type="info"
+                      size="small"
+                      plain
+                      disabled
+                    >未通过</el-button>
+
+                    <el-button type="danger" size="small" plain @click="handleReportPostDelete(scope.row)">删除</el-button>
+                  </template>
+
+                  <!-- 评论操作 -->
+                  <template v-else-if="getReportTargetType(scope.row) === 2">
+                    <el-button type="danger" size="small" plain @click="handleReportCommentDelete(scope.row)">删除评论</el-button>
+                  </template>
+
+                  <el-button size="small" plain @click="openReportDetail(scope.row)">详情</el-button>
+                </div>
+
+                <div class="action-buttons-row secondary-row">
+                  <el-button
+                    type="danger"
+                    size="small"
+                    plain
+                    class="full-width-btn"
+                    :loading="Boolean(reportDeleteLoading[getReportId(scope.row)])"
+                    @click="handleDeleteReport(scope.row)"
+                  >删除记录</el-button>
+                </div>
+              </div>
             </template>
           </el-table-column>
         </el-table>
 
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="prev, pager, next, total"
           :total="reportTotal"
           :page-size="reportPageSize"
           :current-page="reportPage"
@@ -147,38 +306,49 @@
       </el-tab-pane>
 
       <el-tab-pane label="标签管理" name="tags">
-        <el-form :model="tagForm" label-position="top" style="max-width: 720px">
-          <el-form-item label="批量新增标签">
-            <el-select
-              v-model="tagForm.tagNames"
-              multiple
-              filterable
-              allow-create
-              default-first-option
+        <div class="section-header">
+          <div class="section-title">标签列表</div>
+          <div class="section-actions">
+            <el-input
+              v-model="tagKeywordFilter"
+              placeholder="搜索标签"
+              size="small"
+              style="width: 180px"
               clearable
-              placeholder="输入标签名称并回车，可多选"
-              style="width: 100%"
+              @clear="fetchTags(1)"
+              @keyup.enter="fetchTags(1)"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="fetchTags(1)" />
+              </template>
+            </el-input>
+            <el-divider direction="vertical" />
+            <el-input
+              v-model="tagForm.tagName"
+              clearable
+              size="small"
+              placeholder="请输入标签名称"
+              style="width: 200px"
+              @keyup.enter="handleCreateTags"
             />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="tagCreating" @click="handleCreateTags">新增</el-button>
-            <el-button :loading="tagLoading" @click="fetchTags(tagPage)">刷新</el-button>
-          </el-form-item>
-        </el-form>
+            <el-button type="primary" size="small" :loading="tagCreating" @click="handleCreateTags">新增</el-button>
+            <el-button size="small" :loading="tagLoading" @click="fetchTags(tagPage)">刷新</el-button>
+          </div>
+        </div>
 
-        <el-table :data="tags" style="width: 100%" v-loading="tagLoading">
+        <el-table :data="tags" stripe border v-loading="tagLoading" style="width: 100%">
           <el-table-column prop="tagId" label="ID" width="100" />
           <el-table-column prop="tagName" label="标签" />
           <el-table-column prop="useCount" label="使用次数" width="120" />
-          <el-table-column label="操作" width="120">
+          <el-table-column label="操作" width="100">
             <template #default="scope">
-              <el-button type="danger" size="small" :loading="Boolean(tagDeleteLoading[scope.row.tagId])" @click="handleDeleteTag(scope.row.tagId)">删除</el-button>
+              <el-button type="danger" size="small" plain :loading="Boolean(tagDeleteLoading[scope.row.tagId])" @click="handleDeleteTag(scope.row.tagId)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="prev, pager, next, total"
           :total="tagTotal"
           :page-size="tagPageSize"
           :current-page="tagPage"
@@ -190,29 +360,36 @@
         <div class="section-header">
           <div class="section-title">系统公告</div>
           <div class="section-actions">
-            <el-button type="primary" @click="announcementDialogVisible = true">新增公告</el-button>
-            <el-button :loading="announcementLoading" @click="fetchAnnouncements(announcementPage)">刷新</el-button>
+            <el-button type="primary" size="small" @click="announcementDialogVisible = true">发布公告</el-button>
+            <el-button size="small" :loading="announcementLoading" @click="fetchAnnouncements(announcementPage)">刷新</el-button>
           </div>
         </div>
 
-        <el-table :data="announcements" style="width: 100%" v-loading="announcementLoading">
+        <el-table :data="announcements" stripe border v-loading="announcementLoading" style="width: 100%">
           <el-table-column label="ID" width="100">
             <template #default="scope">{{ getAnnouncementId(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="标题" min-width="200">
+          <el-table-column label="标题" min-width="180" show-overflow-tooltip>
             <template #default="scope">{{ getAnnouncementTitle(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="内容" min-width="320">
+          <el-table-column label="内容" min-width="300" show-overflow-tooltip>
             <template #default="scope">{{ previewAnnouncementContent(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="时间" width="180">
+          <el-table-column label="时间" width="160">
             <template #default="scope">{{ getAnnouncementTime(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="140">
+          <el-table-column label="操作" width="180">
             <template #default="scope">
+              <el-button
+                type="primary"
+                size="small"
+                plain
+                @click="openAnnouncementDetail(scope.row)"
+              >查看</el-button>
               <el-button
                 type="danger"
                 size="small"
+                plain
                 :loading="Boolean(announcementDeleteLoading[getAnnouncementId(scope.row)])"
                 @click="handleDeleteAnnouncement(scope.row)"
               >删除</el-button>
@@ -222,14 +399,126 @@
 
         <el-pagination
           background
-          layout="prev, pager, next"
+          layout="prev, pager, next, total"
           :total="announcementTotal"
           :page-size="announcementPageSize"
           :current-page="announcementPage"
           @current-change="fetchAnnouncements"
         />
       </el-tab-pane>
+
+      <el-tab-pane label="评论管理" name="comments">
+        <div class="section-header">
+          <div class="section-title">评论列表</div>
+          <div class="section-actions">
+            <el-input
+              v-model="commentPostIdFilter"
+              placeholder="按帖子ID筛选"
+              size="small"
+              style="width: 180px"
+              clearable
+              @clear="fetchComments(1)"
+              @keyup.enter="fetchComments(1)"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="fetchComments(1)" />
+              </template>
+            </el-input>
+            <el-button size="small" :loading="commentLoading" @click="fetchComments(commentPage)">刷新</el-button>
+          </div>
+        </div>
+
+        <el-table :data="comments" stripe border v-loading="commentLoading" style="width: 100%">
+          <el-table-column prop="commentId" label="ID" width="100" />
+          <el-table-column prop="postId" label="帖子ID" width="100">
+            <template #default="scope">
+              <el-link type="primary" :underline="false" @click="goPost(scope.row.postId)">{{ scope.row.postId }}</el-link>
+            </template>
+          </el-table-column>
+          <el-table-column label="评论者" min-width="150">
+            <template #default="scope">
+              <div class="target-info">
+                <el-image
+                  v-if="scope.row.avatar"
+                  :src="scope.row.avatar"
+                  class="target-image"
+                  :preview-src-list="[scope.row.avatar]"
+                  preview-teleported
+                  fit="cover"
+                />
+                <el-link type="primary" :underline="false" @click="goUser(scope.row.userId)" class="target-name">{{ scope.row.username || '未知用户' }}</el-link>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="content" label="内容" min-width="250" show-overflow-tooltip />
+          <el-table-column label="时间" width="160">
+            <template #default="scope">
+              {{ formatDate(scope.row.createTime) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="scope">
+              <el-button
+                type="danger"
+                size="small"
+                plain
+                :loading="Boolean(commentDeleteLoading[scope.row.commentId])"
+                @click="handleDeleteComment(scope.row.commentId)"
+              >删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-pagination
+          background
+          layout="prev, pager, next, total"
+          :total="commentTotal"
+          :page-size="commentPageSize"
+          :current-page="commentPage"
+          @current-change="fetchComments"
+        />
+      </el-tab-pane>
+
+      <el-tab-pane label="位置管理" name="locals">
+        <div class="section-header">
+          <div class="section-title">位置分类</div>
+          <div class="section-actions">
+            <el-button type="primary" size="small" @click="openLocalDialog()">新增位置</el-button>
+            <el-button size="small" :loading="localLoading" @click="fetchLocals">刷新</el-button>
+          </div>
+        </div>
+
+        <el-table :data="locals" stripe border v-loading="localLoading" style="width: 100%">
+          <el-table-column prop="localId" label="ID" width="100" />
+          <el-table-column prop="localName" label="位置名称" min-width="150" />
+          <el-table-column label="操作" width="160">
+            <template #default="scope">
+              <el-button type="primary" size="small" plain @click="openLocalDialog(scope.row)">编辑</el-button>
+              <el-button
+                type="danger"
+                size="small"
+                plain
+                @click="handleDeleteLocal(scope.row.localId)"
+              >删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
     </el-tabs>
+
+    <el-dialog v-model="localDialogVisible" :title="isEditLocal ? '编辑位置' : '新增位置'" width="500px" center destroy-on-close>
+      <el-form :model="localForm" label-position="top">
+        <el-form-item label="位置名称" required>
+          <el-input v-model="localForm.localName" placeholder="例如：天津、北京、上海" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="localDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="localSaving" @click="handleSaveLocal">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="roleDialogVisible" title="用户角色" width="520px" center destroy-on-close>
       <div v-loading="roleLoading">
@@ -240,13 +529,11 @@
         <div style="height: 12px" />
 
         <el-form label-position="top">
-          <el-form-item label="角色">
+          <el-form-item label="角色" required>
             <el-select
-              v-model="selectedRoleIds"
-              multiple
+              v-model="selectedRoleId"
               filterable
-              clearable
-              placeholder="请选择角色（可为空，表示清空角色）"
+              placeholder="请选择角色"
               style="width: 100%"
             >
               <el-option
@@ -285,14 +572,45 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="announcementDetailVisible" title="公告详情" width="640px" center destroy-on-close>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="ID">{{ getAnnouncementId(announcementDetail) }}</el-descriptions-item>
+        <el-descriptions-item label="标题">{{ getAnnouncementTitle(announcementDetail) }}</el-descriptions-item>
+        <el-descriptions-item label="时间">{{ getAnnouncementTime(announcementDetail) }}</el-descriptions-item>
+      </el-descriptions>
+      <div style="height: 12px" />
+      <el-card shadow="never">
+        <div class="announcement-content">{{ getAnnouncementContent(announcementDetail) }}</div>
+      </el-card>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="announcementDetailVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="reportDetailVisible" title="举报详情" width="720px" center destroy-on-close>
       <el-descriptions :column="1" border>
         <el-descriptions-item label="ID">{{ getReportId(reportDetail) }}</el-descriptions-item>
+        <el-descriptions-item label="举报人">
+          <el-link :underline="false" type="primary" @click="goUser(reportDetail?.reporterId)">{{ reportDetail?.reporterUsername || '未知' }}</el-link>
+        </el-descriptions-item>
         <el-descriptions-item label="对象类型">{{ reportTargetTypeLabel(reportDetail) }}</el-descriptions-item>
-        <el-descriptions-item label="对象ID">{{ getReportTargetId(reportDetail) }}</el-descriptions-item>
+        <el-descriptions-item label="举报对象">
+          <div class="target-info">
+            <el-image
+              v-if="getReportTargetImage(reportDetail)"
+              :src="getReportTargetImage(reportDetail)"
+              class="target-image"
+              :preview-src-list="getReportTargetPreviewList(reportDetail)"
+              preview-teleported
+              fit="cover"
+            />
+            <span class="target-name">{{ reportDetail?.targetName || '未知' }}</span>
+          </div>
+        </el-descriptions-item>
         <el-descriptions-item label="状态">{{ reportStatusLabel(reportDetail) }}</el-descriptions-item>
         <el-descriptions-item label="原因">{{ getReportReason(reportDetail) }}</el-descriptions-item>
-        <el-descriptions-item label="证据">{{ getReportEvidence(reportDetail) }}</el-descriptions-item>
         <el-descriptions-item label="时间">{{ getReportTime(reportDetail) }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -311,22 +629,33 @@ import {
   getAdminUserList,
   updateUserStatus,
   getAdminPostList,
-  auditPost,
+  updatePostStatus,
   deleteAdminPost,
   publishAnnouncement,
   deleteAdminAnnouncement,
   getReportList,
   updateReportStatus,
+  deleteReport as deleteAdminReport,
   createAdminTags,
   deleteAdminTag,
   getUserRoleInfo,
   updateUserRole,
+  getAdminCommentList,
+  deleteAdminComment,
 } from '@/api/admin'
+import {
+  getLocalList,
+  createLocal,
+  updateLocal,
+  deleteLocal,
+} from '@/api/local'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getTags as getPublicTags } from '@/api/post'
 import { useRouter } from 'vue-router'
 import { getAnnouncements as getUserAnnouncements } from '@/api/user'
+import { formatDate } from '@/utils/formatDate'
 
 const activeTab = ref('users')
 const users = ref([])
@@ -334,6 +663,9 @@ const posts = ref([])
 const reports = ref([])
 const userTotal = ref(0)
 const postTotal = ref(0)
+const userLoading = ref(false)
+const postLoading = ref(false)
+const userKeywordFilter = ref('')
 const announcementForm = ref({ title: '', content: '', visibleTo: 0 })
 
 const userStore = useUserStore()
@@ -344,7 +676,7 @@ const roleLoading = ref(false)
 const roleSaving = ref(false)
 const roleUser = ref({ userId: undefined, username: '' })
 const roleOptions = ref([])
-const selectedRoleIds = ref([])
+const selectedRoleId = ref(undefined)
 
 const announcements = ref([])
 const announcementTotal = ref(0)
@@ -355,6 +687,9 @@ const announcementDialogVisible = ref(false)
 const announcementCreating = ref(false)
 const announcementDeleteLoading = ref({})
 
+const announcementDetailVisible = ref(false)
+const announcementDetail = ref(null)
+
 const tags = ref([])
 const tagTotal = ref(0)
 const tagPage = ref(1)
@@ -362,16 +697,124 @@ const tagPageSize = ref(10)
 const tagLoading = ref(false)
 const tagCreating = ref(false)
 const tagDeleteLoading = ref({})
-const tagForm = ref({ tagNames: [] })
+const tagForm = ref({ tagName: '' })
+const tagKeywordFilter = ref('')
 
 const reportTotal = ref(0)
 const reportPage = ref(1)
 const reportPageSize = ref(10)
 const reportLoading = ref(false)
 const reportStatusFilter = ref(undefined)
-const reportStatusUpdating = ref({})
+const reportDeleteLoading = ref({})
 const reportDetailVisible = ref(false)
 const reportDetail = ref(null)
+
+const comments = ref([])
+const commentTotal = ref(0)
+const commentPage = ref(1)
+const commentPageSize = ref(10)
+const commentLoading = ref(false)
+const commentPostIdFilter = ref('')
+const commentDeleteLoading = ref({})
+
+const locals = ref([])
+const localLoading = ref(false)
+const localDialogVisible = ref(false)
+const localSaving = ref(false)
+const isEditLocal = ref(false)
+const localForm = ref({ localId: undefined, localName: '' })
+
+const fetchLocals = async () => {
+  try {
+    localLoading.value = true
+    const res = await getLocalList()
+    locals.value = res || []
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('获取位置列表失败')
+  } finally {
+    localLoading.value = false
+  }
+}
+
+const openLocalDialog = (row = null) => {
+  if (row) {
+    isEditLocal.value = true
+    localForm.value = { ...row }
+  } else {
+    isEditLocal.value = false
+    localForm.value = { localId: undefined, localName: '' }
+  }
+  localDialogVisible.value = true
+}
+
+const handleSaveLocal = async () => {
+  if (!localForm.value.localName) {
+    ElMessage.warning('请输入位置名称')
+    return
+  }
+  try {
+    localSaving.value = true
+    if (isEditLocal.value) {
+      await updateLocal(localForm.value)
+      ElMessage.success('更新成功')
+    } else {
+      await createLocal(localForm.value)
+      ElMessage.success('创建成功')
+    }
+    localDialogVisible.value = false
+    fetchLocals()
+  } catch (error) {
+    console.error(error)
+  } finally {
+    localSaving.value = false
+  }
+}
+
+const handleDeleteLocal = async (localId) => {
+  try {
+    await ElMessageBox.confirm('确定删除该位置分类吗？', '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await deleteLocal(localId)
+    ElMessage.success('删除成功')
+    fetchLocals()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+    }
+  }
+}
+
+const getRoleLabel = (role) => {
+  const map = { 1: '超级管理员', 2: '管理员', 3: '普通用户', 4: '游客' }
+  return map[role] || '未知'
+}
+
+const getRoleTagType = (role) => {
+  const map = { 1: 'danger', 2: 'warning', 3: 'success', 4: 'info' }
+  return map[role] || 'info'
+}
+
+const canManageUser = (targetUser) => {
+  if (!targetUser) return false
+  const currentUserRole = userStore.userInfo?.role
+  const targetUserRole = Number(targetUser.role)
+
+  // 超级管理员可以管理所有人，除了自己（防止自杀）
+  if (currentUserRole === 1) {
+    return String(userStore.userInfo.userId) !== String(targetUser.userId)
+  }
+
+  // 管理员只能管理普通用户(3)和游客(4)，不能管理超级管理员(1)和其他管理员(2)
+  if (currentUserRole === 2) {
+    return targetUserRole > 2
+  }
+
+  return false
+}
 
 const formatRoleLabel = (role) => {
   if (!role) return ''
@@ -382,21 +825,31 @@ const formatRoleLabel = (role) => {
 
 const fetchUsers = async (page = 1) => {
   try {
-    const res = await getAdminUserList({ page, pageSize: 10 })
+    userLoading.value = true
+    const res = await getAdminUserList({
+      page,
+      pageSize: 10,
+      username: userKeywordFilter.value || undefined,
+    })
     users.value = res.records || []
     userTotal.value = res.total || 0
   } catch (error) {
     console.error(error)
+  } finally {
+    userLoading.value = false
   }
 }
 
 const fetchPosts = async (page = 1) => {
   try {
+    postLoading.value = true
     const res = await getAdminPostList({ page, pageSize: 10 })
     posts.value = res.records || []
     postTotal.value = res.total || 0
   } catch (error) {
     console.error(error)
+  } finally {
+    postLoading.value = false
   }
 }
 
@@ -424,25 +877,113 @@ const fetchReports = async (page = 1) => {
   }
 }
 
-const handleUpdateReportStatus = async (row, isStatus) => {
+const handleDeleteReport = async (row) => {
   const id = getReportId(row)
   if (!id) return
-  if (reportStatusUpdating.value[id]) return
-
-  const previous = reportStatusValue(row)
-  row.isStatus = isStatus
+  if (reportDeleteLoading.value[id]) return
 
   try {
-    reportStatusUpdating.value = { ...reportStatusUpdating.value, [id]: true }
-    await updateReportStatus(id)
-    ElMessage.success('已更新')
+    await ElMessageBox.confirm('确定要删除该举报记录吗？此操作不可撤销。', '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    reportDeleteLoading.value = { ...reportDeleteLoading.value, [id]: true }
+    await deleteAdminReport(id)
+    ElMessage.success('举报记录已删除')
     fetchReports(reportPage.value)
   } catch (error) {
-    row.isStatus = previous
-    console.error(error)
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error('删除失败')
+    }
   } finally {
-    const { [id]: _, ...rest } = reportStatusUpdating.value
-    reportStatusUpdating.value = rest
+    const next = { ...reportDeleteLoading.value }
+    delete next[id]
+    reportDeleteLoading.value = next
+  }
+}
+
+const handleReportUserStatus = async (row, status) => {
+  const userId = getReportTargetId(row)
+  if (!userId) return
+  try {
+    await updateUserStatus(userId, status)
+    ElMessage.success(status === 0 ? '用户已启用' : '用户已禁用')
+    // 自动标记为已处理
+    if (reportStatusValue(row) === 0) {
+      await updateReportStatus(getReportId(row), 1)
+    }
+    fetchReports(reportPage.value)
+    fetchUsers(1)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const handleReportPostStatus = async (row, status) => {
+  const postId = getReportTargetId(row)
+  if (!postId) return
+  try {
+    await updatePostStatus(postId, status)
+    ElMessage.success('帖子状态已更新')
+    // 自动标记为已处理
+    if (reportStatusValue(row) === 0) {
+      await updateReportStatus(getReportId(row), 1)
+    }
+    fetchReports(reportPage.value)
+    fetchPosts(1)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const handleReportPostDelete = async (row) => {
+  const postId = getReportTargetId(row)
+  if (!postId) return
+  try {
+    await ElMessageBox.confirm('确定要删除该帖子吗？', '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await deleteAdminPost(postId)
+    ElMessage.success('帖子已删除')
+    // 自动标记为已处理
+    if (reportStatusValue(row) === 0) {
+      await updateReportStatus(getReportId(row), 1)
+    }
+    fetchReports(reportPage.value)
+    fetchPosts(1)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+    }
+  }
+}
+
+const handleReportCommentDelete = async (row) => {
+  const commentId = getReportTargetId(row)
+  if (!commentId) return
+  try {
+    await ElMessageBox.confirm('确定要删除该评论吗？', '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await deleteAdminComment(commentId)
+    ElMessage.success('评论已删除')
+    // 自动标记为已处理
+    if (reportStatusValue(row) === 0) {
+      await updateReportStatus(getReportId(row), 1)
+    }
+    fetchReports(reportPage.value)
+    fetchComments(commentPage.value)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+    }
   }
 }
 
@@ -464,12 +1005,8 @@ const getReportReason = (item) => {
   return item?.reasonText || item?.reason || ''
 }
 
-const getReportEvidence = (item) => {
-  return item?.evidence || ''
-}
-
 const getReportTime = (item) => {
-  return item?.createTime || item?.createAt || item?.time || ''
+  return formatDate(item?.createTime || item?.createAt || item?.time)
 }
 
 const reportTargetTypeLabel = (item) => {
@@ -508,12 +1045,6 @@ const reportStatusTagType = (item) => {
   return 'info'
 }
 
-const previewReportEvidence = (item) => {
-  const text = String(getReportEvidence(item) || '').trim()
-  if (!text) return ''
-  return text.length > 40 ? `${text.slice(0, 40)}...` : text
-}
-
 const openReportDetail = (item) => {
   reportDetail.value = item
   reportDetailVisible.value = true
@@ -537,7 +1068,11 @@ const fetchTags = async (page = 1) => {
   try {
     tagLoading.value = true
     tagPage.value = page
-    const res = await getPublicTags({ page: tagPage.value, pageSize: tagPageSize.value })
+    const res = await getPublicTags({
+      page: tagPage.value,
+      pageSize: tagPageSize.value,
+      tagName: tagKeywordFilter.value || undefined
+    })
     tags.value = res.records || []
     tagTotal.value = res.total || 0
   } catch (error) {
@@ -547,23 +1082,64 @@ const fetchTags = async (page = 1) => {
   }
 }
 
-const normalizeTagNames = (names) => {
-  const list = Array.isArray(names) ? names : []
-  const cleaned = list.map(s => String(s || '').trim()).filter(Boolean)
-  return Array.from(new Set(cleaned))
+const fetchComments = async (page = 1) => {
+  try {
+    commentLoading.value = true
+    commentPage.value = page
+    const res = await getAdminCommentList({
+      page: commentPage.value,
+      pageSize: commentPageSize.value,
+      postId: commentPostIdFilter.value || undefined,
+    })
+    comments.value = res?.records || []
+    commentTotal.value = res?.total || 0
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('获取评论列表失败')
+  } finally {
+    commentLoading.value = false
+  }
+}
+
+const handleDeleteComment = async (commentId) => {
+  if (!commentId) return
+  try {
+    await ElMessageBox.confirm('确定删除该评论吗？', '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  if (commentDeleteLoading.value[commentId]) return
+  try {
+    commentDeleteLoading.value = { ...commentDeleteLoading.value, [commentId]: true }
+    await deleteAdminComment(commentId)
+    ElMessage.success('删除成功')
+    fetchComments(commentPage.value)
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('删除失败')
+  } finally {
+    const next = { ...commentDeleteLoading.value }
+    delete next[commentId]
+    commentDeleteLoading.value = next
+  }
 }
 
 const handleCreateTags = async () => {
-  const names = normalizeTagNames(tagForm.value.tagNames)
-  if (names.length === 0) {
-    ElMessage.warning('请输入至少一个标签名称')
+  const tagName = String(tagForm.value.tagName || '').trim()
+  if (!tagName) {
+    ElMessage.warning('请输入标签名称')
     return
   }
   try {
     tagCreating.value = true
-    await createAdminTags(names.map(tagName => ({ tagName })))
+    await createAdminTags([{ tagName }])
     ElMessage.success('新增成功')
-    tagForm.value.tagNames = []
+    tagForm.value.tagName = ''
     fetchTags(1)
   } catch (error) {
     console.error(error)
@@ -583,24 +1159,32 @@ const handleDeleteTag = async (tagId) => {
   } catch (error) {
     console.error(error)
   } finally {
-    const { [tagId]: _, ...rest } = tagDeleteLoading.value
-    tagDeleteLoading.value = rest
+    const next = { ...tagDeleteLoading.value }
+    delete next[tagId]
+    tagDeleteLoading.value = next
   }
 }
 
 const handleStatus = async (userId, status) => {
+  // 安全校验
+  const targetUser = users.value.find(u => u.userId === userId)
+  if (targetUser && !canManageUser(targetUser)) {
+    ElMessage.error('权限不足，无法操作此用户')
+    return
+  }
+
   try {
     await updateUserStatus(userId, status)
-    ElMessage.success('操作成功')
-    fetchUsers()
+    ElMessage.success(status === 0 ? '用户已启用' : '用户已禁用')
+    fetchUsers(1)
   } catch (error) {
     console.error(error)
   }
 }
 
-const handleAudit = async (postId, status) => {
+const handlePostStatus = async (postId, status) => {
   try {
-    await auditPost(postId, status)
+    await updatePostStatus(postId, status)
     ElMessage.success('操作成功')
     fetchPosts()
   } catch (error) {
@@ -618,6 +1202,40 @@ const handleDelete = async (postId) => {
   }
 }
 
+const getPostCover = (post) => {
+  if (!post?.images) return ''
+  if (Array.isArray(post.images)) {
+    return post.images[0] || ''
+  }
+  return post.images
+}
+
+const getPostPreviewList = (post) => {
+  const cover = getPostCover(post)
+  if (!cover) return []
+  if (Array.isArray(post.images)) {
+    return post.images
+  }
+  return [post.images]
+}
+
+const getReportTargetImage = (report) => {
+  if (!report?.targetImage) return ''
+  if (Array.isArray(report.targetImage)) {
+    return report.targetImage[0] || ''
+  }
+  return report.targetImage
+}
+
+const getReportTargetPreviewList = (report) => {
+  const cover = getReportTargetImage(report)
+  if (!cover) return []
+  if (Array.isArray(report.targetImage)) {
+    return report.targetImage
+  }
+  return [report.targetImage]
+}
+
 const getAnnouncementId = (item) => {
   return item?.id || item?.announcementId || item?.noticeId
 }
@@ -627,13 +1245,17 @@ const getAnnouncementTitle = (item) => {
 }
 
 const getAnnouncementTime = (item) => {
-  return item?.createTime || item?.createAt || item?.time || ''
+  return formatDate(item?.createTime || item?.createAt || item?.time)
 }
 
 const previewAnnouncementContent = (item) => {
   const text = String(item?.content || item?.announcementContent || item?.noticeContent || item?.text || '').trim()
   if (!text) return ''
   return text.length > 60 ? `${text.slice(0, 60)}...` : text
+}
+
+const getAnnouncementContent = (item) => {
+  return String(item?.content || item?.announcementContent || item?.noticeContent || item?.text || '').trim()
 }
 
 const fetchAnnouncements = async (page = 1) => {
@@ -697,9 +1319,15 @@ const handleDeleteAnnouncement = async (item) => {
   } catch (error) {
     console.error(error)
   } finally {
-    const { [id]: _, ...rest } = announcementDeleteLoading.value
-    announcementDeleteLoading.value = rest
+    const next = { ...announcementDeleteLoading.value }
+    delete next[id]
+    announcementDeleteLoading.value = next
   }
+}
+
+const openAnnouncementDetail = (item) => {
+  announcementDetail.value = item
+  announcementDetailVisible.value = true
 }
 
 const goUser = (userId) => {
@@ -713,16 +1341,21 @@ const goPost = (postId) => {
 }
 
 const openRoleDialog = async (user) => {
+  if (!canManageUser(user)) {
+    ElMessage.warning('无法修改此用户的角色')
+    return
+  }
   roleDialogVisible.value = true
   roleLoading.value = true
   roleUser.value = { userId: user.userId, username: user.username }
   roleOptions.value = []
-  selectedRoleIds.value = []
+  selectedRoleId.value = undefined
 
   try {
     const res = await getUserRoleInfo(user.userId)
     roleOptions.value = (res?.roleList || []).filter(r => String(r?.status || '0') === '0')
-    selectedRoleIds.value = res?.assignedRoleIds || []
+    const assignedIds = res?.assignedRoleIds || []
+    selectedRoleId.value = assignedIds.length > 0 ? assignedIds[0] : undefined
   } catch (error) {
     console.error(error)
   } finally {
@@ -732,12 +1365,16 @@ const openRoleDialog = async (user) => {
 
 const saveUserRoles = async () => {
   if (!roleUser.value.userId) return
+  if (selectedRoleId.value === undefined || selectedRoleId.value === null) {
+    ElMessage.warning('请选择一个角色')
+    return
+  }
   if (roleSaving.value) return
   try {
     roleSaving.value = true
     await updateUserRole({
       userId: roleUser.value.userId,
-      roleIds: selectedRoleIds.value,
+      roleIds: [selectedRoleId.value],
     })
     ElMessage.success('角色已更新')
     ElMessage.warning('该用户登录态已失效，需要重新登录生效')
@@ -764,6 +1401,8 @@ watch(activeTab, (tab) => {
   if (tab === 'reports') fetchReports()
   if (tab === 'tags') fetchTags(1)
   if (tab === 'announcement') fetchAnnouncements(1)
+  if (tab === 'comments') fetchComments(1)
+  if (tab === 'locals') fetchLocals()
 })
 
 watch(reportStatusFilter, () => {
@@ -785,11 +1424,92 @@ watch(reportStatusFilter, () => {
 }
 
 .section-title {
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  position: relative;
+  padding-left: 12px;
+}
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 16px;
+  background-color: #409eff;
+  border-radius: 2px;
 }
 
 .section-actions {
   display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.el-table {
+  margin-top: 8px;
+  border-radius: 4px;
+}
+
+.el-pagination {
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.target-info {
+  display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.target-image {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 1px solid #ebeef5;
+  overflow: hidden;
+}
+
+.target-name {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-buttons-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.action-buttons-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondary-row {
+  border-top: 1px dashed #ebeef5;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.full-width-btn {
+  width: 100%;
+}
+
+.announcement-content {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 14px;
+  color: #2c3e50;
 }
 </style>

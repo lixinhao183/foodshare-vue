@@ -43,6 +43,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getAnnouncements } from '@/api/user'
+import { formatDate } from '@/utils/formatDate';
 
 const loading = ref(false)
 const announcements = ref([])
@@ -58,8 +59,7 @@ const itemKey = (item) => {
 }
 
 const formatTime = (value) => {
-  if (!value) return ''
-  return String(value)
+  return formatDate(value)
 }
 
 const previewText = (value) => {
